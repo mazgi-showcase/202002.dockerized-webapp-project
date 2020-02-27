@@ -1,0 +1,23 @@
+name: test-all-services
+
+on:
+  push:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [bff, frontend]
+        node-version: [12.x]
+    env:
+      working-directory: ${{ matrix.service }}
+    steps:
+      - uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+      - uses: actions/checkout@v2
+      - run: npm install
+        working-directory: ${{ matrix.service }}
+      - run: npm run test:coverage
+        working-directory: ${{ matrix.service }}

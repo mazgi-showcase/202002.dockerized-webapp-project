@@ -1,5 +1,7 @@
 # 202002.dockerized-webapp-project
 
+![GitHub Actions status for "test-all-services"](https://github.com/mazgi-showcase/202002.dockerized-webapp-project/workflows/test-all-services/badge.svg)
+
 ## Prepare
 
 1. Download cargo-make
