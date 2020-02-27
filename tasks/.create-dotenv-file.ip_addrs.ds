@@ -1,0 +1,22 @@
+# This is a duckscript file.
+# https://github.com/sagiegurari/duckscript
+
+echo
+echo Please input your IP address for binding the containers.
+echo This IP address is the same as your LAN IP address in almost cases.
+echo You can get it via `ip address show` command or `ifconfig` command.
+echo Enter your value:
+bind_ip_addr = read
+if is_empty ${bind_ip_addr}
+  assert_error "Please retry and input your BIND_IP_ADDR"
+end
+
+echo
+echo (optional) Please input your IP address for publishing the apps on the containers.
+echo That needed If you have another IP address for listening requests from the Internet.
+echo For example, if your development environment is on an instance of any IaaS and using NAT or Load Balancer.
+echo Enter your value or press the Enter key without any value:
+public_ip_addr = read
+if is_empty ${public_ip_addr}
+  public_ip_addr = set ${bind_ip_addr}
+end

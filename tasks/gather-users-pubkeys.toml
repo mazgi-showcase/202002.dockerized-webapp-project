@@ -1,0 +1,108 @@
+[config]
+skip_core_tasks = true
+min_version = "0.26.1"
+
+[tasks.prepare]
+cwd = "${CARGO_MAKE_CURRENT_TASK_INITIAL_MAKEFILE_DIRECTORY}/../"
+script = [
+'''
+if [[ ! -f .config/users.txt ]]; then
+  echo '".config/users.txt" does not exist, please make it first.'
+  exit 1
+fi
+mkdir -p tmp
+'''
+]
+
+[tasks.normalization]
+dependencies = [
+  "prepare"
+]
+condition = { files_exist = ["${CARGO_MAKE_WORKING_DIRECTORY}/.config/users.txt"] }
+script = [
+'''
+grep -v -E '\s*#' .config/users.txt | awk '{ print tolower($0) }' > tmp/users.normalized.txt
+'''
+]
+
+[tasks.generate-users-spare-keypair-index]
+dependencies = [
+  "prepare"
+]
+condition = { files_not_exist = ["${CARGO_MAKE_WORKING_DIRECTORY}/tmp/users-spare-keypair.index.csv"] }
+script = [
+'''
+echo 'user,secret' > tmp/users-spare-keypair.index.csv
+'''
+]
+
+[tasks.generate-users-spare-keypair]
+dependencies = [
+  "prepare",
+  "normalization",
+  "generate-users-spare-keypair-index"
+]
+condition.files_exist = [
+  "${CARGO_MAKE_WORKING_DIRECTORY}/tmp/users.normalized.txt",
+  "${CARGO_MAKE_WORKING_DIRECTORY}/tmp/users-spare-keypair.index.csv"
+]
+script = [
+'''
+for user in $(cat tmp/users.normalized.txt); do
+  grep -q ${user} tmp/users-spare-keypair.index.csv && continue
+  secret="${RANDOM}-${RANDOM}"
+  mkdir -p tmp/users-spare-keypair/${user}/${secret}
+  ssh-keygen -f tmp/users-spare-keypair/${user}/${secret}/spare_key -N "" -C "${user}@spare"
+  mv tmp/users-spare-keypair/${user}/${secret}/spare_key{,.txt}
+  mv tmp/users-spare-keypair/${user}/${secret}/spare_key.pub{,.txt}
+  echo "${user},${secret}" >> tmp/users-spare-keypair.index.csv
+done
+'''
+]
+
+[tasks.download-users-pubkeys-from-github]
+dependencies = [
+  "prepare",
+  "normalization"
+]
+condition.files_exist = [
+  "${CARGO_MAKE_WORKING_DIRECTORY}/tmp/users.normalized.txt"
+]
+script = [
+'''
+for user in $(cat tmp/users.normalized.txt); do
+  mkdir -p tmp/users-keys/${user}
+  curl -L github.com/${user}.keys > tmp/users-keys/${user}/pubkeys-from-github.txt
+done
+'''
+]
+
+[tasks.gather-users-pubkeys]
+dependencies = [
+  "prepare",
+  "normalization",
+  "generate-users-spare-keypair",
+  "download-users-pubkeys-from-github"
+]
+condition.files_exist = [
+  "${CARGO_MAKE_WORKING_DIRECTORY}/tmp/users.normalized.txt",
+  "${CARGO_MAKE_WORKING_DIRECTORY}/tmp/users-spare-keypair.index.csv"
+]
+script = [
+'''
+for user in $(cat tmp/users.normalized.txt); do
+  mkdir -p tmp/users-keys/${user}
+  echo '' > tmp/users-keys/${user}/pubkeys.txt
+  find tmp/users-spare-keypair/${user}/ -type f -name '*.pub.txt' -exec cat {} \; >> tmp/users-keys/${user}/pubkeys.txt
+  cat tmp/users-keys/${user}/pubkeys-from-github.txt >> tmp/users-keys/${user}/pubkeys.txt
+done
+'''
+]
+
+[tasks.default]
+dependencies = [
+  "generate-users-spare-keypair-index",
+  "generate-users-spare-keypair",
+  "download-users-pubkeys-from-github",
+  "gather-users-pubkeys"
+]

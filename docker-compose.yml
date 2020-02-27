@@ -1,0 +1,122 @@
+version: "3.7"
+
+services:
+  vscode: # for prettier
+    build:
+      context: Dockerfile.d/vscode
+      args:
+        UID: ${UID:-0}
+        GID: ${GID:-0}
+    working_dir: /workspace
+    volumes:
+      - .:/workspace
+    user: "${UID:-0}:${GID:-0}"
+    command:
+      - bash
+      - -c
+      - |
+        jq -s '.[0] * .[1]' bff/.eslintrc.json frontend/.eslintrc.json > .eslintrc.json
+        # mv package.json /tmp/package.orig.json
+        # jq -s '.[0].devDependencies * .[1].devDependencies' bff/package.json frontend/package.json > /tmp/devDeps.json
+        # jq --argfile deps /tmp/devDeps.json '.devDependencies = $deps' /tmp/package.orig.json > package.json
+        npm install
+  mysql:
+    image: mysql:5.7
+    environment:
+      MYSQL_ALLOW_EMPTY_PASSWORD: "true"
+    ports:
+      - "${BIND_IP_ADDR:-127.0.0.1}:3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+  redis:
+    image: redis:5
+    ports:
+      - "${BIND_IP_ADDR:-127.0.0.1}:6379:6379"
+  bff:
+    build:
+      context: Dockerfile.d/bff.development
+      args:
+        UID: ${UID:-0}
+        GID: ${GID:-0}
+    depends_on:
+      - mysql
+      - redis
+    working_dir: /workspace
+    volumes:
+      - ./bff:/workspace
+      - ./config.development/bff:/data/config/bff:ro
+    ports:
+      - "${BIND_IP_ADDR:-127.0.0.1}:4000:4000"
+    user: "${UID:-0}:${GID:-0}"
+    environment:
+      - BFF_CONFIG_CREADENTIALS_AMAZON_S3_ACCESS_KEY
+      - BFF_CONFIG_CREADENTIALS_AMAZON_S3_SECRET_ACCESS_KEY
+      - BFF_CONFIG_SOURCE_AMAZON_S3_BUCKET
+      - BFF_CONFIG_SOURCE_AMAZON_S3_PATHNAME
+      - BFF_CONFIG_CREADENTIALS_GOOGLE_CLOUD_STORAGE
+      - BFF_CONFIG_SOURCE_GOOGLE_CLOUD_STORAGE_BUCKET
+      - BFF_CONFIG_SOURCE_GOOGLE_CLOUD_STORAGE_PATHNAME
+    command:
+      - bash
+      - -c
+      - |
+        npm install
+        scripts/wait-mysql.sh mysql
+        npm run dev
+  frontend:
+    build:
+      context: Dockerfile.d/frontend.development
+      args:
+        UID: ${UID:-0}
+        GID: ${GID:-0}
+    depends_on:
+      - bff
+    working_dir: /workspace
+    volumes:
+      - ./frontend:/workspace
+    ports:
+      - "${BIND_IP_ADDR:-127.0.0.1}:3000:3000"
+    user: "${UID:-0}:${GID:-0}"
+    environment:
+      - BFF_ENDPOINT_URL=http://${PUBLIC_IP_ADDR}:4000/graphql
+    command:
+      - bash
+      - -c
+      - |
+        npm install
+        npm run dev
+  image-publisher:
+    build:
+      context: Dockerfile.d/image-publisher
+      args:
+        UID: ${UID:-0}
+        GID: ${GID:-0}
+    working_dir: /workspace
+    environment:
+      - GOOGLE_CLOUD_KEYFILE_JSON=/workspace/config/credentials/google-cloud-keyfile.json
+      - GOOGLE_APPLICATION_CREDENTIALS=/workspace/config/credentials/google-cloud-keyfile.json
+      - CLOUDSDK_CORE_PROJECT
+    volumes:
+      - image-publisher-dotconfig:/root/.config # for macOS
+      - image-publisher-dotconfig:/developer/.config
+      - image-publisher-dotdocker:/root/.docker # for macOS
+      - image-publisher-dotdocker:/developer/.docker
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/workspace
+    command:
+      - bash
+      - -c
+      - |
+        gcloud auth activate-service-account --key-file=/workspace/config/credentials/google-cloud-keyfile.json
+        gcloud services enable containerregistry.googleapis.com
+        gcloud auth configure-docker --quiet
+volumes:
+  mysql-data:
+    driver: local
+  image-publisher-dotconfig:
+    driver: local
+  image-publisher-dotdocker:
+    driver: local

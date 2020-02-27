@@ -1,0 +1,108 @@
+[config]
+skip_core_tasks = true
+min_version = "0.26.0"
+
+[env]
+DOCKER_BUILDKIT = "1"
+EVALUATED_VAR = { script = ["echo SOME VALUE"] }
+NOW = { script = ['date +%m%d-%H%M%S'] }
+GIT_SHORT_HASH = { script = ['git rev-parse --short HEAD || echo undef'] }
+
+[tasks.prepare]
+cwd = "${CARGO_MAKE_CURRENT_TASK_INITIAL_MAKEFILE_DIRECTORY}/../"
+
+[tasks.build-bff]
+dependencies = [
+  "prepare"
+]
+script = [
+'''
+echo -n "${GIT_SHORT_HASH}-${NOW}," > tmp/docker-image-info.bff.txt
+rm -rf Dockerfile.d/bff/rootfs
+mkdir -p Dockerfile.d/bff/rootfs/data/config/bff
+echo '{}' > Dockerfile.d/bff/rootfs/data/config/bff/config.json
+rsync --archive --exclude='node_modules' --exclude='ormconfig.json' bff/ Dockerfile.d/bff/rootfs/workspace
+docker build --no-cache --quiet --target production Dockerfile.d/bff >> tmp/docker-image-info.bff.txt
+'''
+]
+
+[tasks.build-frontend]
+dependencies = [
+  "prepare"
+]
+script = [
+'''
+echo -n "${GIT_SHORT_HASH}-${NOW}," > tmp/docker-image-info.frontend.txt
+rm -rf Dockerfile.d/frontend/rootfs
+mkdir -p Dockerfile.d/frontend/rootfs/
+rsync --archive --exclude='node_modules' --exclude='.next' frontend/ Dockerfile.d/frontend/rootfs/workspace
+docker build --no-cache --quiet --target production Dockerfile.d/frontend >> tmp/docker-image-info.frontend.txt
+'''
+]
+
+[tasks.build-all]
+run_task.name = [
+  "build-bff",
+  "build-frontend"
+]
+run_task.parallel = true
+
+[tasks.push-images]
+condition = { files_exist = ["${CARGO_MAKE_WORKING_DIRECTORY}/.env"] }
+script = [
+'''
+eval $(grep CLOUDSDK_CORE_PROJECT ${CARGO_MAKE_WORKING_DIRECTORY}/.env)
+
+TARGETS=${TARGETS:-"bff frontend"}
+declare -a targets=($TARGETS)
+for target in "${targets[@]}"
+do
+  export repository="gcr.io/${CLOUDSDK_CORE_PROJECT}/${target}"
+  export tag=$(head -1 tmp/docker-image-info.${target}.txt | cut -d ',' -f 1)
+  export id=$(head -1 tmp/docker-image-info.${target}.txt | cut -d ',' -f 2)
+  for full_image_name in ${repository}:latest ${repository}:${tag}
+  do
+    docker tag $id $full_image_name
+    docker-compose run image-publisher docker push $full_image_name
+  done
+done
+'''
+]
+
+[tasks.push-bff]
+condition = { files_exist = ["${CARGO_MAKE_WORKING_DIRECTORY}/.env"] }
+env = { "TARGETS" = "bff" }
+run_task.name = ['push-images']
+
+[tasks.push-frontend]
+condition = { files_exist = ["${CARGO_MAKE_WORKING_DIRECTORY}/.env"] }
+env = { "TARGETS" = "frontend" }
+run_task.name = ['push-images']
+
+[tasks.push-all]
+run_task.name = [
+  "push-bff",
+  "push-frontend"
+]
+run_task.parallel = false
+
+[tasks.bff]
+dependencies = [
+  "prepare",
+  "build-bff",
+  "push-bff"
+]
+
+[tasks.frontend]
+dependencies = [
+  "prepare",
+  "build-frontend",
+  "push-frontend"
+]
+
+[tasks.default]
+dependencies = [
+  "prepare",
+  "build-all",
+  "push-all"
+]

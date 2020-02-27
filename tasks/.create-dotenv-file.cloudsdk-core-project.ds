@@ -1,0 +1,10 @@
+# This is a duckscript file.
+# https://github.com/sagiegurari/duckscript
+
+echo
+echo Please input your GCP Project ID of the targeted you provisioning.
+echo Enter your value:
+gcp_project_id = read
+if is_empty ${gcp_project_id}
+  assert_error "Please retry and input your GCP Project ID"
+end

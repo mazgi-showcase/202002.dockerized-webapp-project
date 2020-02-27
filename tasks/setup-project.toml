@@ -1,0 +1,33 @@
+extend = [
+  { path = ".setup-project.create-dotenv-file.toml" },
+  { path = ".setup-project.create-config-files.toml" }
+]
+
+[config]
+skip_core_tasks = true
+min_version = "0.26.1"
+
+[tasks.prepare]
+cwd = "${CARGO_MAKE_CURRENT_TASK_INITIAL_MAKEFILE_DIRECTORY}/../"
+
+[tasks.create-keypair]
+dependencies = [
+  "prepare"
+]
+condition.files_not_exist = [
+  "${CARGO_MAKE_WORKING_DIRECTORY}/config.development/bff/key.pem",
+  "${CARGO_MAKE_WORKING_DIRECTORY}/config.development/bff/pubkey.pem"
+]
+script = [
+'''
+openssl genrsa -out config.development/bff/key.pem 4096
+openssl rsa -in config.development/bff/key.pem -pubout -out config.development/bff/pubkey.pem
+'''
+]
+
+[tasks.default]
+dependencies = [
+  "create-keypair",
+  "create-config-files",
+  "create-dotenv-file"
+]

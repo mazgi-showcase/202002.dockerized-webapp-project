@@ -1,0 +1,49 @@
+[tasks.create-dotenv-file.linux]
+dependencies = [
+  "prepare"
+]
+condition = { files_not_exist = ["${CARGO_MAKE_WORKING_DIRECTORY}/.env"] }
+script_runner = "@duckscript"
+script = [
+'''
+out = set ""
+
+ret_uid = exec id -u
+ret_gid = exec id -g
+uid = set ${ret_uid.stdout}
+gid = set ${ret_gid.stdout}
+
+out = set "${out}UID=${uid}"
+out = set "${out}GID=${gid}"
+
+!include_files ./tasks/.create-dotenv-file.cloudsdk-core-project.ds
+!include_files ./tasks/.create-dotenv-file.ip_addrs.ds
+
+out = set "${out}CLOUDSDK_CORE_PROJECT=${gcp_project_id}\n"
+out = set "${out}BIND_IP_ADDR=${bind_ip_addr}\n"
+out = set "${out}PUBLIC_IP_ADDR=${public_ip_addr}\n"
+
+writefile .env ${out}
+'''
+]
+
+[tasks.create-dotenv-file.mac]
+dependencies = [
+  "prepare"
+]
+condition = { files_not_exist = ["${CARGO_MAKE_WORKING_DIRECTORY}/.env"] }
+script_runner = "@duckscript"
+script = [
+'''
+out = set ""
+
+!include_files ./tasks/.create-dotenv-file.cloudsdk-core-project.ds
+!include_files ./tasks/.create-dotenv-file.ip_addrs.ds
+
+out = set "${out}CLOUDSDK_CORE_PROJECT=${gcp_project_id}\n"
+out = set "${out}BIND_IP_ADDR=${bind_ip_addr}\n"
+out = set "${out}PUBLIC_IP_ADDR=${public_ip_addr}\n"
+
+writefile .env ${out}
+'''
+]
